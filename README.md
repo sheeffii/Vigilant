@@ -25,6 +25,92 @@ These changes create **Security Drift** and **Cost Bleed** that remain invisible
 
 ---
 
+### 🏗️ System Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────┐
+│                           USER / BROWSER                                │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │ HTTPS
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                       REACT FRONTEND (Vite)                             │
+│  ┌───────────────────────────────────────────────────────────────────┐  │
+│  │  • Dashboard (Drift Alerts, Cost Bleed)                           │  │
+│  │  • Traffic Risk Monitor                                           │  │
+│  │  • Resource Inventory Viewer                                      │  │
+│  └───────────────────────────────────────────────────────────────────┘  │
+└────────────────────────────────┬────────────────────────────────────────┘
+                                 │ REST API (JSON)
+                                 ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                      FASTAPI BACKEND (Python)                           │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │               API ENDPOINTS (/api/v1/...)                        │   │
+│  │  • /drift-summary  • /cost-analysis  • /traffic-risk            │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │              🔍 DRIFT DETECTION ENGINE                           │   │
+│  │  ┌────────────────────────┬─────────────────────────┐            │   │
+│  │  │  TerraformService      │  InventoryService       │            │   │
+│  │  │  • Parse .tfstate      │  • Scan LocalStack      │            │   │
+│  │  │  • Extract managed IDs │  • List live resources  │            │   │
+│  │  └────────────────────────┴─────────────────────────┘            │   │
+│  │                          │                                        │   │
+│  │                          ▼                                        │   │
+│  │              ┌───────────────────────┐                            │   │
+│  │              │ COMPARISON LOGIC      │                            │   │
+│  │              │ (Managed vs Live)     │                            │   │
+│  │              └───────────────────────┘                            │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │              💰 PRICING ENGINE                                   │   │
+│  │  • Load prices.json                                              │   │
+│  │  • Calculate Cost Bleed (hourly → monthly)                       │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+│                                                                          │
+│  ┌──────────────────────────────────────────────────────────────────┐   │
+│  │              🌐 TRAFFIC ANALYZER                                 │   │
+│  │  • Parse Nginx Logs                                              │   │
+│  │  • GeoIP Lookup (geoip2 + local DB)                              │   │
+│  │  • Flag Risky IPs on Unmanaged Resources                         │   │
+│  └──────────────────────────────────────────────────────────────────┘   │
+└─────┬──────────────────┬──────────────────┬──────────────────┬──────────┘
+      │                  │                  │                  │
+      │                  │                  │                  │
+      ▼                  ▼                  ▼                  ▼
+┌──────────┐   ┌──────────────────┐   ┌──────────┐   ┌──────────────────┐
+│ LOCAL    │   │   LOCALSTACK     │   │  POSTGRE │   │      REDIS       │
+│ DISK     │   │    (DOCKER)      │   │   SQL    │   │   (CACHE/QUEUE)  │
+│          │   │                  │   │          │   │                  │
+│ • .tfsta │   │  ┌────────────┐  │   │ • Drift  │   │ • Session Data   │
+│   te     │   │  │ S3 Buckets │  │   │   Logs   │   │ • Task Queue     │
+│ • prices │   │  └────────────┘  │   │ • Cost   │   │ • Rate Limiting  │
+│   .json  │   │  ┌────────────┐  │   │   History│   │                  │
+│          │   │  │    EC2     │  │   │ • Traffic│   │                  │
+│          │   │  │  Instances │  │   │   Events │   │                  │
+│          │   │  └────────────┘  │   │          │   │                  │
+│          │   │                  │   │          │   │                  │
+│          │   │  (via Boto3 SDK) │   │          │   │                  │
+└──────────┘   └──────────────────┘   └──────────┘   └──────────────────┘
+      ▲                  ▲
+      │                  │
+      │                  │
+┌─────┴──────────────────┴────────────────────────────────────────────────┐
+│                     TERRAFORM (via tflocal)                             │
+│  • Provisions Infrastructure in LocalStack                              │
+│  • Generates terraform.tfstate (source of truth for managed resources)  │
+└─────────────────────────────────────────────────────────────────────────┘
+
+Legend:
+  ┌─┐  Component/Service     │  Data Flow     ▼  Direction
+  [ ]  Process/Logic         →  API Call      •  List Item
+```
+
+---
+
 ### Architecture Overview
 
 - **Phase 1 – Lab (Infrastructure & Mocking)**
