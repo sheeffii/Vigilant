@@ -1,0 +1,57 @@
+version: "3.9"
+
+services:
+  localstack:
+    image: localstack/localstack:latest
+    container_name: vigilant-localstack
+    environment:
+      - SERVICES=s3,ec2,cloudwatch,logs,iam,sts
+      - DEBUG=1
+      - DATA_DIR=/var/lib/localstack/data
+      - DEFAULT_REGION=us-east-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=us-east-1
+    ports:
+      - "4566:4566" # Edge port for all services
+      - "4571:4571"
+    volumes:
+      - "./.localstack:/var/lib/localstack"
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    networks:
+      - vigilant-net
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: vigilant-postgres
+    environment:
+      - POSTGRES_DB=vigilant
+      - POSTGRES_USER=vigilant
+      - POSTGRES_PASSWORD=vigilant
+    ports:
+      - "5432:5432"
+    volumes:
+      - "pgdata:/var/lib/postgresql/data"
+    networks:
+      - vigilant-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: vigilant-redis
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - "redisdata:/data"
+    networks:
+      - vigilant-net
+
+volumes:
+  pgdata:
+  redisdata:
+
+networks:
+  vigilant-net:
+    driver: bridge
+
+
